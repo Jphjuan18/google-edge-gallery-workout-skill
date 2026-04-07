@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Workout Coach</title>
+    <title>Workout Coach Pro</title>
   </head>
   <body>
     <script>
@@ -11,46 +11,54 @@
         try {
           const jsonData = JSON.parse(data);
           const action = jsonData.action;
-          const exercise = jsonData.exercise ? jsonData.exercise.toLowerCase().trim() : null;
+          const workoutName = jsonData.workout_name ? jsonData.workout_name.toLowerCase() : null;
 
-          if (!action || !exercise) {
-             return JSON.stringify({ error: "Missing required fields: action and exercise." });
+          if (!action || !workoutName) {
+             return JSON.stringify({ error: "Missing required fields: action and workout_name." });
           }
 
-          // Initialize the local database
-          // Data structure: { "squats": [{date, weight, reps, sets}], "bench press": [...] }
-          let db = JSON.parse(localStorage.getItem("workout_database") || "{}");
-          if (!db[exercise]) {
-            db[exercise] = [];
-          }
+          let db = JSON.parse(localStorage.getItem("workout_db_pro") || '{"logs": []}');
+          const today = new Date().toISOString().split('T')[0];
 
-          if (action === "log") {
-            // Save new workout entry
-            const entry = {
-              date: new Date().toISOString().split('T')[0],
-              weight: jsonData.weight,
-              reps: jsonData.reps,
-              sets: jsonData.sets
+          if (action === "log_workout") {
+            if (!jsonData.workout_data) {
+                return JSON.stringify({ error: "No workout data provided to log." });
+            }
+            
+            const processedExercises = jsonData.workout_data.map(ex => ({
+                name: ex.name || "Unknown Exercise",
+                weight: ex.weight || null,
+                reps: ex.reps || null,
+                sets: ex.sets || null,
+                duration_or_notes: ex.duration_or_notes || null
+            }));
+
+            const newLog = {
+                date: today,
+                workout_name: workoutName,
+                exercises: processedExercises
             };
             
-            db[exercise].push(entry);
-            localStorage.setItem("workout_database", JSON.stringify(db));
+            db.logs.push(newLog);
+            localStorage.setItem("workout_db_pro", JSON.stringify(db));
             
             return JSON.stringify({ 
               success: true, 
-              message: `Successfully logged ${jsonData.sets} sets of ${jsonData.reps} reps at ${jsonData.weight} for ${exercise}.` 
+              message: `Successfully logged ${workoutName} for ${today}.` 
             });
 
-          } else if (action === "retrieve") {
-            // Fetch the last workout entry
-            const history = db[exercise];
+          } else if (action === "get_history") {
+            const history = db.logs.filter(log => log.workout_name === workoutName);
+            
             if (history.length === 0) {
-              return JSON.stringify({ message: `I couldn't find any previous logs for ${exercise}.` });
+              return JSON.stringify({ message: `I couldn't find any past logs for ${workoutName}.` });
             }
             
-            const lastWorkout = history[history.length - 1];
+            // Grab up to the last 3 workouts to show a trend for coaching
+            const recentWorkouts = history.slice(-3); 
             return JSON.stringify({ 
-              message: `Last time on ${lastWorkout.date}, you did ${lastWorkout.sets} sets of ${lastWorkout.reps} reps at ${lastWorkout.weight}.` 
+              message: `Found your last ${recentWorkouts.length} sessions for ${workoutName}.`,
+              data: recentWorkouts 
             });
 
           } else {
@@ -59,7 +67,7 @@
 
         } catch (e) {
           console.error(e);
-          return JSON.stringify({ error: `Failed to execute workout coach: ${e.message}` });
+          return JSON.stringify({ error: `Failed to execute: ${e.message}` });
         }
       };
     </script>
