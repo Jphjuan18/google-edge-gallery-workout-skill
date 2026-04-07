@@ -1,81 +1,68 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Workout Coach Analytics</title>
-  </head>
-  <body>
-    <script>
-      window["ai_edge_gallery_get_result"] = async (data) => {
-        try {
-          const jsonData = JSON.parse(data);
-          const action = jsonData.action;
-          const workoutName = jsonData.workout_name ? jsonData.workout_name.toLowerCase() : null;
+<body>
+  <script>
+    const STORAGE_KEY = 'workout_db_ultimate';
 
-          if (!action || !workoutName) {
-             return JSON.stringify({ error: "Missing required fields: action and workout_name." });
-          }
+    window["ai_edge_gallery_get_result"] = async (data) => {
+      try {
+        const jsonData = JSON.parse(data);
+        const action = jsonData.action;
+        const workoutName = jsonData.workout_name ? jsonData.workout_name.toLowerCase() : null;
+        const showDashboard = jsonData.show_dashboard || action === "get_history";
 
-          let db = JSON.parse(localStorage.getItem("workout_db_analytics") || '{"logs": []}');
-          const today = new Date().toISOString().split('T')[0];
-
-          if (action === "log_workout") {
-            if (!jsonData.workout_data) {
-                return JSON.stringify({ error: "No workout data provided to log." });
-            }
-            
-            // Validate and map the strict numeric structure
-            const processedExercises = jsonData.workout_data.map(ex => {
-                const cleanSets = Array.isArray(ex.sets) ? ex.sets.map(s => ({
-                    weight: Number(s.weight) || 0,
-                    reps: Number(s.reps) || 0
-                })) : [];
-
-                return {
-                    name: ex.name || "Unknown Exercise",
-                    sets: cleanSets,
-                    notes: ex.notes || null
-                };
-            });
-
-            const newLog = {
-                date: today,
-                workout_name: workoutName,
-                exercises: processedExercises
-            };
-            
-            db.logs.push(newLog);
-            localStorage.setItem("workout_db_analytics", JSON.stringify(db));
-            
-            return JSON.stringify({ 
-              success: true, 
-              message: `Successfully logged ${workoutName} for ${today} with strict numeric formatting.` 
-            });
-
-          } else if (action === "get_history") {
-            const history = db.logs.filter(log => log.workout_name === workoutName);
-            
-            if (history.length === 0) {
-              return JSON.stringify({ message: `I couldn't find any past logs for ${workoutName}.` });
-            }
-            
-            // Grab the last 3 workouts
-            const recentWorkouts = history.slice(-3); 
-            return JSON.stringify({ 
-              message: `Found your last ${recentWorkouts.length} sessions for ${workoutName}.`,
-              data: recentWorkouts 
-            });
-
-          } else {
-            return JSON.stringify({ error: "Invalid action specified." });
-          }
-
-        } catch (e) {
-          console.error(e);
-          return JSON.stringify({ error: `Failed to execute: ${e.message}` });
+        if (!action || !workoutName) {
+           return JSON.stringify({ error: "Missing required fields: action and workout_name." });
         }
-      };
-    </script>
-  </body>
+
+        let db = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"logs": []}');
+        const today = new Date().toISOString().split('T')[0];
+        let resultMessage = "";
+
+        if (action === "log_workout") {
+          const processedExercises = jsonData.workout_data.map(ex => {
+              const cleanSets = Array.isArray(ex.sets) ? ex.sets.map(s => ({
+                  weight: Number(s.weight) || 0,
+                  reps: Number(s.reps) || 0
+              })) : [];
+              return { name: ex.name || "Unknown Exercise", sets: cleanSets, notes: ex.notes || null };
+          });
+
+          db.logs.push({ date: today, workout_name: workoutName, exercises: processedExercises });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+
+          resultMessage = `Successfully logged ${workoutName} for ${today}.`;
+
+        } else if (action === "get_history") {
+          const history = db.logs.filter(log => log.workout_name === workoutName);
+          if (history.length === 0) {
+            resultMessage = `I couldn't find any past logs for ${workoutName}.`;
+          } else {
+            const recentWorkouts = history.slice(-3);
+            resultMessage = `Found your last ${recentWorkouts.length} sessions for ${workoutName}. \n\nData: ${JSON.stringify(recentWorkouts)}`;
+          }
+        } else {
+          return JSON.stringify({ error: "Invalid action." });
+        }
+
+        // Build the response payload
+        const response = { result: resultMessage };
+
+        // Trigger the visual UI if requested
+        if (showDashboard) {
+          // Point to the assets folder where the dashboard lives
+          response.webview = {
+            url: `assets/dashboard.html?workout=${encodeURIComponent(workoutName)}`
+          };
+        }
+
+        return JSON.stringify(response);
+
+      } catch (e) {
+        console.error(e);
+        return JSON.stringify({ error: `Failed to execute: ${e.message}` });
+      }
+    };
+  </script>
+</body>
 </html>
