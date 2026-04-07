@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Workout Coach</title>
+  </head>
+  <body>
+    <script>
+      window["ai_edge_gallery_get_result"] = async (data) => {
+        try {
+          const jsonData = JSON.parse(data);
+          const action = jsonData.action;
+          const exercise = jsonData.exercise ? jsonData.exercise.toLowerCase().trim() : null;
+
+          if (!action || !exercise) {
+             return JSON.stringify({ error: "Missing required fields: action and exercise." });
+          }
+
+          // Initialize the local database
+          // Data structure: { "squats": [{date, weight, reps, sets}], "bench press": [...] }
+          let db = JSON.parse(localStorage.getItem("workout_database") || "{}");
+          if (!db[exercise]) {
+            db[exercise] = [];
+          }
+
+          if (action === "log") {
+            // Save new workout entry
+            const entry = {
+              date: new Date().toISOString().split('T')[0],
+              weight: jsonData.weight,
+              reps: jsonData.reps,
+              sets: jsonData.sets
+            };
+            
+            db[exercise].push(entry);
+            localStorage.setItem("workout_database", JSON.stringify(db));
+            
+            return JSON.stringify({ 
+              success: true, 
+              message: `Successfully logged ${jsonData.sets} sets of ${jsonData.reps} reps at ${jsonData.weight} for ${exercise}.` 
+            });
+
+          } else if (action === "retrieve") {
+            // Fetch the last workout entry
+            const history = db[exercise];
+            if (history.length === 0) {
+              return JSON.stringify({ message: `I couldn't find any previous logs for ${exercise}.` });
+            }
+            
+            const lastWorkout = history[history.length - 1];
+            return JSON.stringify({ 
+              message: `Last time on ${lastWorkout.date}, you did ${lastWorkout.sets} sets of ${lastWorkout.reps} reps at ${lastWorkout.weight}.` 
+            });
+
+          } else {
+            return JSON.stringify({ error: "Invalid action specified." });
+          }
+
+        } catch (e) {
+          console.error(e);
+          return JSON.stringify({ error: `Failed to execute workout coach: ${e.message}` });
+        }
+      };
+    </script>
+  </body>
+</html>
