@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workout Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #f97316; /* Gym Orange */
+      --text-main: #f8fafc;
+      --text-dim: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
+    body {
+      background: var(--bg-dark);
+      color: var(--text-main);
+      padding: 20px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container { width: 100%; max-width: 500px; animation: fadeIn 0.6s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    header { text-align: center; margin-bottom: 30px; }
+    h1 { font-weight: 800; font-size: 2rem; color: var(--accent); text-transform: uppercase; }
+    .workout-title { font-size: 1.2rem; color: var(--text-dim); }
+
+    .stats-card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    .stat-item { text-align: center; }
+    .stat-value { font-size: 1.8rem; font-weight: 600; color: var(--text-main); }
+    .stat-label { font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase; }
+
+    .chart-container {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      height: 250px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+
+    .history-section { margin-top: 30px; }
+    .history-title { font-size: 1.2rem; font-weight: 600; margin-bottom: 15px; border-bottom: 2px solid var(--card-bg); padding-bottom: 10px; }
+
+    .session-card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .session-date { font-weight: 600; color: var(--accent); margin-bottom: 10px; font-size: 1.1rem; }
+    .exercise-list { list-style: none; font-size: 0.9rem; }
+    .exercise-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .exercise-item:last-child { border-bottom: none; }
+    .ex-name { color: var(--text-main); font-weight: 600; }
+    .ex-data { color: var(--text-dim); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Progress</h1>
+      <div class="workout-title" id="display-title">Loading...</div>
+    </header>
+
+    <div class="stats-card">
+      <div class="stat-item">
+        <div class="stat-value" id="total-sessions">0</div>
+        <div class="stat-label">Sessions</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="max-volume">0</div>
+        <div class="stat-label">Max Volume</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="volumeChart"></canvas>
+    </div>
+
+    <div class="history-section">
+      <div class="history-title">Recent Workouts</div>
+      <div id="history-container">
+        </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'workout_db_ultimate';
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetWorkout = (urlParams.get('workout') || 'unknown').toLowerCase();
+
+    document.getElementById('display-title').textContent = targetWorkout.toUpperCase();
+
+    function loadAndRender() {
+      const db = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"logs": []}');
+
+      // Filter for the specific workout requested (e.g., "leg day")
+      const history = db.logs.filter(log => log.workout_name === targetWorkout);
+
+      if(history.length === 0) {
+        document.getElementById('history-container').innerHTML = '<p style="color: #94a3b8; text-align: center;">No data found for this workout yet.</p>';
+        return;
+      }
+
+      document.getElementById('total-sessions').textContent = history.length;
+
+      const chartLabels = [];
+      const chartData = [];
+      let maxVolume = 0;
+
+      const historyContainer = document.getElementById('history-container');
+      historyContainer.innerHTML = '';
+
+      // Process data chronologically
+      history.forEach(session => {
+        let sessionVolume = 0;
+        let exerciseHtml = '';
+
+        session.exercises.forEach(ex => {
+          let exVolume = 0;
+          let setStrings = [];
+
+          ex.sets.forEach(set => {
+            const w = Number(set.weight) || 0;
+            const r = Number(set.reps) || 0;
+            // If bodyweight (0), count reps as volume. Otherwise weight * reps.
+            const setVol = w > 0 ? (w * r) : r;
+            exVolume += setVol;
+            setStrings.push(`${w > 0 ? w + 'lbs' : 'BW'} x ${r}`);
+          });
+
+          sessionVolume += exVolume;
+
+          exerciseHtml += `
+            <li class="exercise-item">
+              <span class="ex-name">${ex.name} ${ex.notes ? `<small>(${ex.notes})</small>` : ''}</span>
+              <span class="ex-data">${setStrings.join(', ')}</span>
+            </li>
+          `;
+        });
+
+        if (sessionVolume > maxVolume) maxVolume = sessionVolume;
+
+        // Format Date
+        const d = new Date(session.date);
+        const dateString = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        chartLabels.push(dateString);
+        chartData.push(sessionVolume);
+
+        // Prepend to show newest first in the list
+        historyContainer.insertAdjacentHTML('afterbegin', `
+          <div class="session-card">
+            <div class="session-date">${dateString} <span style="float:right; font-size:0.8rem; color:#94a3b8;">Vol: ${sessionVolume}</span></div>
+            <ul class="exercise-list">
+              ${exerciseHtml}
+            </ul>
+          </div>
+        `);
+      });
+
+      document.getElementById('max-volume').textContent = maxVolume;
+
+      // Render Chart
+      const ctx = document.getElementById('volumeChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: chartLabels,
+          datasets: [{
+            label: 'Total Volume',
+            data: chartData,
+            borderColor: '#f97316',
+            backgroundColor: 'rgba(249, 115, 22, 0.1)',
+            borderWidth: 3,
+            tension: 0.3,
+            fill: true,
+            pointBackgroundColor: '#fff',
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+    }
+
+    loadAndRender();
+  </script>
+</body>
+</html>
